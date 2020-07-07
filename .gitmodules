@@ -174,3 +174,6 @@
 [submodule "contrib/sentry-native"]
 	path = contrib/sentry-native
 	url = https://github.com/getsentry/sentry-native.git
+[submodule "contrib/simde"]
+	path = contrib/simde
+	url = https://github.com/simd-everywhere/simde.git
