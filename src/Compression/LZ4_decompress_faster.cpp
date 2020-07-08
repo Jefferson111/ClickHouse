@@ -9,17 +9,7 @@
 #include <common/types.h>
 #include <common/unaligned.h>
 
-#ifdef __SSE2__
-#include <emmintrin.h>
-#endif
-
-#ifdef __SSSE3__
-#include <tmmintrin.h>
-#endif
-
-#ifdef __aarch64__
-#include <arm_neon.h>
-#endif
+#include <ssse3.h>
 
 namespace LZ4
 {
@@ -72,21 +62,19 @@ inline void copyOverlap8(UInt8 * op, const UInt8 *& match, size_t offset)
 }
 
 
-#if defined(__x86_64__) || defined(__PPC__)
-
 /** We use 'xmm' (128bit SSE) registers here to shuffle 16 bytes.
   *
   * It is possible to use 'mm' (64bit MMX) registers to shuffle just 8 bytes as we need.
   *
   * There is corresponding version of 'pshufb' instruction that operates on 'mm' registers,
   *  (it operates on MMX registers although it is available in SSSE3)
-  *  and compiler library has the corresponding intrinsic: '_mm_shuffle_pi8'.
+  *  and compiler library has the corresponding intrinsic: 'simde_mm_shuffle_pi8'.
   *
   * It can be done like this:
   *
-  *  unalignedStore(op, _mm_shuffle_pi8(
-  *      unalignedLoad<__m64>(match),
-  *      unalignedLoad<__m64>(masks + 8 * offset)));
+  *  unalignedStore(op, simde_mm_shuffle_pi8(
+  *      unalignedLoad<simde__m64>(match),
+  *      unalignedLoad<simde__m64>(masks + 8 * offset)));
   *
   * This is perfectly correct and this code have the same or even better performance.
   *
@@ -107,7 +95,7 @@ inline void copyOverlap8(UInt8 * op, const UInt8 *& match, size_t offset)
 
     int main(int, char **)
     {
-        [[maybe_unused]] __m64 shuffled = _mm_shuffle_pi8(__m64{}, __m64{});
+        [[maybe_unused]] simde__m64 shuffled = simde_mm_shuffle_pi8(simde__m64{}, simde__m64{});
 
         std::vector<int> vec;
         std::unordered_set<int> set(vec.begin(), vec.end());
@@ -133,7 +121,7 @@ inline void copyOverlap8(UInt8 * op, const UInt8 *& match, size_t offset)
         double max_fill = 1;
 
         std::cerr << (long double)max_fill << "\n";
-        [[maybe_unused]] __m64 shuffled = _mm_shuffle_pi8(__m64{}, __m64{});
+        [[maybe_unused]] simde__m64 shuffled = simde_mm_shuffle_pi8(simde__m64{}, simde__m64{});
         std::cerr << (long double)max_fill << "\n";
 
         return 0;
@@ -153,7 +141,7 @@ inline void copyOverlap8(UInt8 * op, const UInt8 *& match, size_t offset)
   */
 inline void copyOverlap8Shuffle(UInt8 * op, const UInt8 *& match, const size_t offset)
 {
-#if defined(__SSSE3__) && !defined(MEMORY_SANITIZER)
+#if !defined(MEMORY_SANITIZER)
 
     static constexpr UInt8 __attribute__((__aligned__(8))) masks[] =
     {
@@ -168,10 +156,10 @@ inline void copyOverlap8Shuffle(UInt8 * op, const UInt8 *& match, const size_t o
         0, 0, 0, 0, 0, 0, 0, 0, /* this row is not used: padding to allow read 16 bytes starting at previous row */
     };
 
-    _mm_storeu_si128(reinterpret_cast<__m128i *>(op),
-        _mm_shuffle_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(match)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(masks + 8 * offset))));
+    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(op),
+        simde_mm_shuffle_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(match)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(masks + 8 * offset))));
 
     match += masks[offset];
 
@@ -179,32 +167,6 @@ inline void copyOverlap8Shuffle(UInt8 * op, const UInt8 *& match, const size_t o
     copyOverlap8(op, match, offset);
 #endif
 }
-
-#endif
-
-
-#ifdef __aarch64__
-
-inline void copyOverlap8Shuffle(UInt8 * op, const UInt8 *& match, const size_t offset)
-{
-    static constexpr UInt8 __attribute__((__aligned__(8))) masks[] =
-    {
-        0, 1, 2, 2, 4, 3, 2, 1, /* offset = 0, not used as mask, but for shift amount instead */
-        0, 0, 0, 0, 0, 0, 0, 0, /* offset = 1 */
-        0, 1, 0, 1, 0, 1, 0, 1,
-        0, 1, 2, 0, 1, 2, 0, 1,
-        0, 1, 2, 3, 0, 1, 2, 3,
-        0, 1, 2, 3, 4, 0, 1, 2,
-        0, 1, 2, 3, 4, 5, 0, 1,
-        0, 1, 2, 3, 4, 5, 6, 0,
-    };
-
-    unalignedStore<uint8x8_t>(op, vtbl1_u8(unalignedLoad<uint8x8_t>(match), unalignedLoad<uint8x8_t>(masks + 8 * offset)));
-    match += masks[offset];
-}
-
-#endif
-
 
 template <> void inline copy<8>(UInt8 * dst, const UInt8 * src) { copy8(dst, src); }
 template <> void inline wildCopy<8>(UInt8 * dst, const UInt8 * src, UInt8 * dst_end) { wildCopy8(dst, src, dst_end); }
@@ -214,12 +176,8 @@ template <> void inline copyOverlap<8, true>(UInt8 * op, const UInt8 *& match, c
 
 inline void copy16(UInt8 * dst, const UInt8 * src)
 {
-#ifdef __SSE2__
-    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(src)));
-#else
-    memcpy(dst, src, 16);
-#endif
+    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst),
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(src)));
 }
 
 inline void wildCopy16(UInt8 * dst, const UInt8 * src, const UInt8 * dst_end)
@@ -263,11 +221,9 @@ inline void copyOverlap16(UInt8 * op, const UInt8 *& match, const size_t offset)
 }
 
 
-#if defined(__x86_64__) || defined(__PPC__)
-
 inline void copyOverlap16Shuffle(UInt8 * op, const UInt8 *& match, const size_t offset)
 {
-#if defined(__SSSE3__) && !defined(MEMORY_SANITIZER)
+#if !defined(MEMORY_SANITIZER)
 
     static constexpr UInt8 __attribute__((__aligned__(16))) masks[] =
     {
@@ -289,10 +245,10 @@ inline void copyOverlap16Shuffle(UInt8 * op, const UInt8 *& match, const size_t 
         0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,  0,
     };
 
-    _mm_storeu_si128(reinterpret_cast<__m128i *>(op),
-        _mm_shuffle_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(match)),
-            _mm_load_si128(reinterpret_cast<const __m128i *>(masks) + offset)));
+    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(op),
+        simde_mm_shuffle_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(match)),
+            simde_mm_load_si128(reinterpret_cast<const simde__m128i *>(masks) + offset)));
 
     match += masks[offset];
 
@@ -300,43 +256,6 @@ inline void copyOverlap16Shuffle(UInt8 * op, const UInt8 *& match, const size_t 
     copyOverlap16(op, match, offset);
 #endif
 }
-
-#endif
-
-#ifdef __aarch64__
-
-inline void copyOverlap16Shuffle(UInt8 * op, const UInt8 *& match, const size_t offset)
-{
-    static constexpr UInt8 __attribute__((__aligned__(16))) masks[] =
-    {
-        0,  1,  2,  1,  4,  1,  4,  2,  8,  7,  6,  5,  4,  3,  2,  1, /* offset = 0, not used as mask, but for shift amount instead */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /* offset = 1 */
-        0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
-        0,  1,  2,  0,  1,  2,  0,  1,  2,  0,  1,  2,  0,  1,  2,  0,
-        0,  1,  2,  3,  0,  1,  2,  3,  0,  1,  2,  3,  0,  1,  2,  3,
-        0,  1,  2,  3,  4,  0,  1,  2,  3,  4,  0,  1,  2,  3,  4,  0,
-        0,  1,  2,  3,  4,  5,  0,  1,  2,  3,  4,  5,  0,  1,  2,  3,
-        0,  1,  2,  3,  4,  5,  6,  0,  1,  2,  3,  4,  5,  6,  0,  1,
-        0,  1,  2,  3,  4,  5,  6,  7,  0,  1,  2,  3,  4,  5,  6,  7,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  0,  1,  2,  3,  4,  5,  6,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  0,  1,  2,  3,  4,  5,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10,  0,  1,  2,  3,  4,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,  0,  1,  2,  3,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,  0,  1,  2,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13,  0,  1,
-        0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,  0,
-    };
-
-    unalignedStore<uint8x8_t>(op,
-        vtbl2_u8(unalignedLoad<uint8x8x2_t>(match), unalignedLoad<uint8x8_t>(masks + 16 * offset)));
-
-    unalignedStore<uint8x8_t>(op + 8,
-        vtbl2_u8(unalignedLoad<uint8x8x2_t>(match), unalignedLoad<uint8x8_t>(masks + 16 * offset + 8)));
-
-    match += masks[offset];
-}
-
-#endif
 
 
 template <> void inline copy<16>(UInt8 * dst, const UInt8 * src) { copy16(dst, src); }
@@ -348,15 +267,10 @@ template <> void inline copyOverlap<16, true>(UInt8 * op, const UInt8 *& match, 
 inline void copy32(UInt8 * dst, const UInt8 * src)
 {
     /// There was an AVX here but with mash with SSE instructions, we got a big slowdown.
-#if defined(__SSE2__)
-    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(src)));
-    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst + 16),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(src + 16)));
-#else
-    memcpy(dst, src, 16);
-    memcpy(dst + 16, src + 16, 16);
-#endif
+    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst),
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(src)));
+    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst + 16),
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(src + 16)));
 }
 
 inline void wildCopy32(UInt8 * dst, const UInt8 * src, const UInt8 * dst_end)

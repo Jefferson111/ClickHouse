@@ -1,6 +1,4 @@
-#ifdef __SSE2__
-    #include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 #include <Columns/IColumn.h>
 #include <Columns/ColumnVector.h>
@@ -24,27 +22,25 @@ size_t countBytesInFilter(const IColumn::Filter & filt)
     const Int8 * pos = reinterpret_cast<const Int8 *>(filt.data());
     const Int8 * end = pos + filt.size();
 
-#if defined(__SSE2__) && defined(__POPCNT__)
-    const __m128i zero16 = _mm_setzero_si128();
+    const simde__m128i zero16 = simde_mm_setzero_si128();
     const Int8 * end64 = pos + filt.size() / 64 * 64;
 
     for (; pos < end64; pos += 64)
         count += __builtin_popcountll(
-            static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos)),
+            static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                simde_mm_loadu_si128(pos),
                 zero16)))
-            | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 16)),
+            | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                simde_mm_loadu_si128(pos + 16),
                 zero16))) << 16)
-            | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 32)),
+            | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                simde_mm_loadu_si128(pos + 32),
                 zero16))) << 32)
-            | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 48)),
+            | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                simde_mm_loadu_si128(pos + 48),
                 zero16))) << 48));
 
     /// TODO Add duff device for tail?
-#endif
 
     for (; pos < end; ++pos)
         count += *pos > 0;
@@ -190,15 +186,14 @@ namespace
             memcpy(&res_elems[elems_size_old], &src_elems[arr_offset], arr_size * sizeof(T));
         };
 
-    #ifdef __SSE2__
-        const __m128i zero_vec = _mm_setzero_si128();
+        const simde__m128i zero_vec = simde_mm_setzero_si128();
         static constexpr size_t SIMD_BYTES = 16;
         const auto * filt_end_aligned = filt_pos + size / SIMD_BYTES * SIMD_BYTES;
 
         while (filt_pos < filt_end_aligned)
         {
-            const auto mask = _mm_movemask_epi8(_mm_cmpgt_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(filt_pos)),
+            const auto mask = simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                simde_mm_loadu_si128(filt_pos),
                 zero_vec));
 
             if (mask == 0)
@@ -230,7 +225,6 @@ namespace
             filt_pos += SIMD_BYTES;
             offsets_pos += SIMD_BYTES;
         }
-    #endif
 
         while (filt_pos < filt_end)
         {

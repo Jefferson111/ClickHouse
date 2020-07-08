@@ -8,9 +8,7 @@
 
 #include <string_view>
 
-#ifdef __SSE2__
-#    include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 namespace DB
 {
@@ -51,17 +49,15 @@ struct ToValidUTF8Impl
 
         while (p < end)
         {
-#ifdef __SSE2__
             /// Fast skip of ASCII
             static constexpr size_t SIMD_BYTES = 16;
             const char * simd_end = p + (end - p) / SIMD_BYTES * SIMD_BYTES;
 
-            while (p < simd_end && !_mm_movemask_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(p))))
+            while (p < simd_end && !simde_mm_movemask_epi8(simde_mm_loadu_si128(p)))
                 p += SIMD_BYTES;
 
             if (!(p < end))
                 break;
-#endif
 
             size_t len = length_of_utf8_sequence[static_cast<unsigned char>(*p)];
 

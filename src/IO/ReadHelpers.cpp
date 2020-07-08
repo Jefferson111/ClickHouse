@@ -11,9 +11,7 @@
 #include <common/find_symbols.h>
 #include <stdlib.h>
 
-#ifdef __SSE2__
-    #include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 namespace DB
 {
@@ -644,22 +642,20 @@ void readCSVStringInto(Vector & s, ReadBuffer & buf, const FormatSettings::CSV &
 
             [&]()
             {
-#ifdef __SSE2__
-                auto rc = _mm_set1_epi8('\r');
-                auto nc = _mm_set1_epi8('\n');
-                auto dc = _mm_set1_epi8(delimiter);
+                auto rc = simde_mm_set1_epi8('\r');
+                auto nc = simde_mm_set1_epi8('\n');
+                auto dc = simde_mm_set1_epi8(delimiter);
                 for (; next_pos + 15 < buf.buffer().end(); next_pos += 16)
                 {
-                    __m128i bytes = _mm_loadu_si128(reinterpret_cast<const __m128i *>(next_pos));
-                    auto eq = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(bytes, rc), _mm_cmpeq_epi8(bytes, nc)), _mm_cmpeq_epi8(bytes, dc));
-                    uint16_t bit_mask = _mm_movemask_epi8(eq);
+                    simde__m128i bytes = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(next_pos));
+                    auto eq = simde_mm_or_si128(simde_mm_or_si128(simde_mm_cmpeq_epi8(bytes, rc), simde_mm_cmpeq_epi8(bytes, nc)), simde_mm_cmpeq_epi8(bytes, dc));
+                    uint16_t bit_mask = simde_mm_movemask_epi8(eq);
                     if (bit_mask)
                     {
                         next_pos += __builtin_ctz(bit_mask);
                         return;
                     }
                 }
-#endif
                 while (next_pos < buf.buffer().end()
                     && *next_pos != delimiter && *next_pos != '\r' && *next_pos != '\n')
                     ++next_pos;

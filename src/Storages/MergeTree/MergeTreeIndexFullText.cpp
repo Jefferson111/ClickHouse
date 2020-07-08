@@ -20,14 +20,7 @@
 
 #include <boost/algorithm/string.hpp>
 
-#if defined(__SSE2__)
-#include <immintrin.h>
-
-#if defined(__SSE4_2__)
-#include <nmmintrin.h>
-#endif
-
-#endif
+#include <sse4.2.h>
 
 
 namespace DB
@@ -640,35 +633,35 @@ bool SplitTokenExtractor::next(const char * data, size_t len, size_t * pos, size
 
     while (*pos < len)
     {
-#if defined(__SSE2__) && !defined(MEMORY_SANITIZER) /// We read uninitialized bytes and decide on the calcualted mask
+#if !defined(MEMORY_SANITIZER) /// We read uninitialized bytes and decide on the calcualted mask
         // NOTE: we assume that `data` string is padded from the right with 15 bytes.
-        const __m128i haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(data + *pos));
+        const simde__m128i haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(data + *pos));
         const size_t haystack_length = 16;
 
 #if defined(__SSE4_2__)
         // With the help of https://www.strchr.com/strcmp_and_strlen_using_sse_4.2
-        const auto alnum_chars_ranges = _mm_set_epi8(0, 0, 0, 0, 0, 0, 0, 0,
+        const auto alnum_chars_ranges = simde_mm_set_epi8(0, 0, 0, 0, 0, 0, 0, 0,
                 '\xFF', '\x80', 'z', 'a', 'Z', 'A', '9', '0');
         // Every bit represents if `haystack` character is in the ranges (1) or not (0)
-        const int result_bitmask = _mm_cvtsi128_si32(_mm_cmpestrm(alnum_chars_ranges, 8, haystack, haystack_length, _SIDD_CMP_RANGES));
+        const int result_bitmask = simde_mm_cvtsi128_si32(_mm_cmpestrm(alnum_chars_ranges, 8, haystack, haystack_length, _SIDD_CMP_RANGES));
 #else
         // NOTE: -1 and +1 required since SSE2 has no `>=` and `<=` instructions on packed 8-bit integers (epi8).
-        const auto number_begin =      _mm_set1_epi8('0' - 1);
-        const auto number_end =        _mm_set1_epi8('9' + 1);
-        const auto alpha_lower_begin = _mm_set1_epi8('a' - 1);
-        const auto alpha_lower_end =   _mm_set1_epi8('z' + 1);
-        const auto alpha_upper_begin = _mm_set1_epi8('A' - 1);
-        const auto alpha_upper_end =   _mm_set1_epi8('Z' + 1);
-        const auto zero  =             _mm_set1_epi8(0);
+        const auto number_begin =      simde_mm_set1_epi8('0' - 1);
+        const auto number_end =        simde_mm_set1_epi8('9' + 1);
+        const auto alpha_lower_begin = simde_mm_set1_epi8('a' - 1);
+        const auto alpha_lower_end =   simde_mm_set1_epi8('z' + 1);
+        const auto alpha_upper_begin = simde_mm_set1_epi8('A' - 1);
+        const auto alpha_upper_end =   simde_mm_set1_epi8('Z' + 1);
+        const auto zero  =             simde_mm_set1_epi8(0);
 
         // every bit represents if `haystack` character `c` statisfies condition:
         // (c < 0) || (c > '0' - 1 && c < '9' + 1) || (c > 'a' - 1 && c < 'z' + 1) || (c > 'A' - 1 && c < 'Z' + 1)
-        // < 0 since _mm_cmplt_epi8 threats chars as SIGNED, and so all chars > 0x80 are negative.
-        const int result_bitmask = _mm_movemask_epi8(_mm_or_si128(_mm_or_si128(_mm_or_si128(
-                _mm_cmplt_epi8(haystack, zero),
-                _mm_and_si128(_mm_cmpgt_epi8(haystack, number_begin),      _mm_cmplt_epi8(haystack, number_end))),
-                _mm_and_si128(_mm_cmpgt_epi8(haystack, alpha_lower_begin), _mm_cmplt_epi8(haystack, alpha_lower_end))),
-                _mm_and_si128(_mm_cmpgt_epi8(haystack, alpha_upper_begin), _mm_cmplt_epi8(haystack, alpha_upper_end))));
+        // < 0 since simde_mm_cmplt_epi8 threats chars as SIGNED, and so all chars > 0x80 are negative.
+        const int result_bitmask = simde_mm_movemask_epi8(simde_mm_or_si128(simde_mm_or_si128(simde_mm_or_si128(
+                simde_mm_cmplt_epi8(haystack, zero),
+                simde_mm_and_si128(simde_mm_cmpgt_epi8(haystack, number_begin),      simde_mm_cmplt_epi8(haystack, number_end))),
+                simde_mm_and_si128(simde_mm_cmpgt_epi8(haystack, alpha_lower_begin), simde_mm_cmplt_epi8(haystack, alpha_lower_end))),
+                simde_mm_and_si128(simde_mm_cmpgt_epi8(haystack, alpha_upper_begin), simde_mm_cmplt_epi8(haystack, alpha_upper_end))));
 #endif
         if (result_bitmask == 0)
         {
@@ -714,7 +707,7 @@ bool SplitTokenExtractor::next(const char * data, size_t len, size_t * pos, size
 #endif
     }
 
-#if defined(__SSE2__) && !defined(MEMORY_SANITIZER)
+#if !defined(MEMORY_SANITIZER)
     // Could happen only if string is not padded with zeroes, and we accidentally hopped over end of data.
     if (*token_start > len)
         return false;

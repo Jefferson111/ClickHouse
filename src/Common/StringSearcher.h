@@ -9,13 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef __SSE2__
-    #include <emmintrin.h>
-#endif
-
-#ifdef __SSE4_1__
-    #include <smmintrin.h>
-#endif
+#include <sse4.2.h>
 
 
 namespace DB
@@ -35,15 +29,13 @@ namespace ErrorCodes
 
 struct StringSearcherBase
 {
-#ifdef __SSE2__
-    static constexpr auto n = sizeof(__m128i);
+    static constexpr auto n = sizeof(simde__m128i);
     const int page_size = getpagesize();
 
     bool pageSafe(const void * const ptr) const
     {
         return ((page_size - 1) & reinterpret_cast<std::uintptr_t>(ptr)) <= page_size - n;
     }
-#endif
 };
 
 
@@ -66,17 +58,15 @@ private:
     uint8_t l{};
     uint8_t u{};
 
-#ifdef __SSE4_1__
     /// vectors filled with `l` and `u`, for determining leftmost position of the first symbol
-    __m128i patl;
-    __m128i patu;
+    simde__m128i patl;
+    simde__m128i patu;
     /// lower and uppercase vectors of first 16 characters of `needle`
-    __m128i cachel = _mm_setzero_si128();
-    __m128i cacheu = _mm_setzero_si128();
+    simde__m128i cachel = simde_mm_setzero_si128();
+    simde__m128i cacheu = simde_mm_setzero_si128();
     int cachemask{};
     size_t cache_valid_len{};
     size_t cache_actual_len{};
-#endif
 
 public:
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
@@ -108,10 +98,9 @@ public:
             u = u_seq[0];
         }
 
-#ifdef __SSE4_1__
         /// for detecting leftmost position of the first symbol
-        patl = _mm_set1_epi8(l);
-        patu = _mm_set1_epi8(u);
+        patl = simde_mm_set1_epi8(l);
+        patu = simde_mm_set1_epi8(u);
         /// lower and uppercase vectors of first 16 octets of `needle`
 
         auto needle_pos = needle;
@@ -120,8 +109,8 @@ public:
         {
             if (needle_pos == needle_end)
             {
-                cachel = _mm_srli_si128(cachel, 1);
-                cacheu = _mm_srli_si128(cacheu, 1);
+                cachel = simde_mm_srli_si128(cachel, 1);
+                cacheu = simde_mm_srli_si128(cacheu, 1);
                 ++i;
 
                 continue;
@@ -146,34 +135,32 @@ public:
 
             for (size_t j = 0; j < src_len && i < n; ++j, ++i)
             {
-                cachel = _mm_srli_si128(cachel, 1);
-                cacheu = _mm_srli_si128(cacheu, 1);
+                cachel = simde_mm_srli_si128(cachel, 1);
+                cacheu = simde_mm_srli_si128(cacheu, 1);
 
                 if (needle_pos != needle_end)
                 {
-                    cachel = _mm_insert_epi8(cachel, l_seq[j], n - 1);
-                    cacheu = _mm_insert_epi8(cacheu, u_seq[j], n - 1);
+                    cachel = simde_mm_insert_epi8(cachel, l_seq[j], n - 1);
+                    cacheu = simde_mm_insert_epi8(cacheu, u_seq[j], n - 1);
 
                     cachemask |= 1 << i;
                     ++needle_pos;
                 }
             }
         }
-#endif
     }
 
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
     ALWAYS_INLINE bool compare(const CharT * /*haystack*/, const CharT * /*haystack_end*/, const CharT * pos) const
     {
 
-#ifdef __SSE4_1__
         if (pageSafe(pos))
         {
-            const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos));
-            const auto v_against_l = _mm_cmpeq_epi8(v_haystack, cachel);
-            const auto v_against_u = _mm_cmpeq_epi8(v_haystack, cacheu);
-            const auto v_against_l_or_u = _mm_or_si128(v_against_l, v_against_u);
-            const auto mask = _mm_movemask_epi8(v_against_l_or_u);
+            const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos));
+            const auto v_against_l = simde_mm_cmpeq_epi8(v_haystack, cachel);
+            const auto v_against_u = simde_mm_cmpeq_epi8(v_haystack, cacheu);
+            const auto v_against_l_or_u = simde_mm_or_si128(v_against_l, v_against_u);
+            const auto mask = simde_mm_movemask_epi8(v_against_l_or_u);
 
             if (0xffff == cachemask)
             {
@@ -201,7 +188,6 @@ public:
 
             return false;
         }
-#endif
 
         if (*pos == l || *pos == u)
         {
@@ -234,15 +220,14 @@ public:
 
         while (haystack < haystack_end)
         {
-#ifdef __SSE4_1__
             if (haystack + n <= haystack_end && pageSafe(haystack))
             {
-                const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                const auto v_against_l = _mm_cmpeq_epi8(v_haystack, patl);
-                const auto v_against_u = _mm_cmpeq_epi8(v_haystack, patu);
-                const auto v_against_l_or_u = _mm_or_si128(v_against_l, v_against_u);
+                const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                const auto v_against_l = simde_mm_cmpeq_epi8(v_haystack, patl);
+                const auto v_against_u = simde_mm_cmpeq_epi8(v_haystack, patu);
+                const auto v_against_l_or_u = simde_mm_or_si128(v_against_l, v_against_u);
 
-                const auto mask = _mm_movemask_epi8(v_against_l_or_u);
+                const auto mask = simde_mm_movemask_epi8(v_against_l_or_u);
 
                 if (mask == 0)
                 {
@@ -256,11 +241,11 @@ public:
 
                 if (haystack < haystack_end && haystack + n <= haystack_end && pageSafe(haystack))
                 {
-                    const auto v_haystack_offset = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                    const auto v_against_l_offset = _mm_cmpeq_epi8(v_haystack_offset, cachel);
-                    const auto v_against_u_offset = _mm_cmpeq_epi8(v_haystack_offset, cacheu);
-                    const auto v_against_l_or_u_offset = _mm_or_si128(v_against_l_offset, v_against_u_offset);
-                    const auto mask_offset = _mm_movemask_epi8(v_against_l_or_u_offset);
+                    const auto v_haystack_offset = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                    const auto v_against_l_offset = simde_mm_cmpeq_epi8(v_haystack_offset, cachel);
+                    const auto v_against_u_offset = simde_mm_cmpeq_epi8(v_haystack_offset, cacheu);
+                    const auto v_against_l_or_u_offset = simde_mm_or_si128(v_against_l_offset, v_against_u_offset);
+                    const auto mask_offset = simde_mm_movemask_epi8(v_against_l_or_u_offset);
 
                     if (0xffff == cachemask)
                     {
@@ -291,7 +276,6 @@ public:
                     continue;
                 }
             }
-#endif
 
             if (haystack == haystack_end)
                 return haystack_end;
@@ -341,13 +325,11 @@ private:
     uint8_t l{};
     uint8_t u{};
 
-#ifdef __SSE4_1__
     /// vectors filled with `l` and `u`, for determining leftmost position of the first symbol
-    __m128i patl, patu;
+    simde__m128i patl, patu;
     /// lower and uppercase vectors of first 16 characters of `needle`
-    __m128i cachel = _mm_setzero_si128(), cacheu = _mm_setzero_si128();
+    simde__m128i cachel = simde_mm_setzero_si128(), cacheu = simde_mm_setzero_si128();
     int cachemask{};
-#endif
 
 public:
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
@@ -360,39 +342,36 @@ public:
         l = static_cast<uint8_t>(std::tolower(*needle));
         u = static_cast<uint8_t>(std::toupper(*needle));
 
-#ifdef __SSE4_1__
-        patl = _mm_set1_epi8(l);
-        patu = _mm_set1_epi8(u);
+        patl = simde_mm_set1_epi8(l);
+        patu = simde_mm_set1_epi8(u);
 
         auto needle_pos = needle;
 
         for (const auto i : ext::range(0, n))
         {
-            cachel = _mm_srli_si128(cachel, 1);
-            cacheu = _mm_srli_si128(cacheu, 1);
+            cachel = simde_mm_srli_si128(cachel, 1);
+            cacheu = simde_mm_srli_si128(cacheu, 1);
 
             if (needle_pos != needle_end)
             {
-                cachel = _mm_insert_epi8(cachel, std::tolower(*needle_pos), n - 1);
-                cacheu = _mm_insert_epi8(cacheu, std::toupper(*needle_pos), n - 1);
+                cachel = simde_mm_insert_epi8(cachel, std::tolower(*needle_pos), n - 1);
+                cacheu = simde_mm_insert_epi8(cacheu, std::toupper(*needle_pos), n - 1);
                 cachemask |= 1 << i;
                 ++needle_pos;
             }
         }
-#endif
     }
 
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
     ALWAYS_INLINE bool compare(const CharT * /*haystack*/, const CharT * /*haystack_end*/, const CharT * pos) const
     {
-#ifdef __SSE4_1__
         if (pageSafe(pos))
         {
-            const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos));
-            const auto v_against_l = _mm_cmpeq_epi8(v_haystack, cachel);
-            const auto v_against_u = _mm_cmpeq_epi8(v_haystack, cacheu);
-            const auto v_against_l_or_u = _mm_or_si128(v_against_l, v_against_u);
-            const auto mask = _mm_movemask_epi8(v_against_l_or_u);
+            const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos));
+            const auto v_against_l = simde_mm_cmpeq_epi8(v_haystack, cachel);
+            const auto v_against_u = simde_mm_cmpeq_epi8(v_haystack, cacheu);
+            const auto v_against_l_or_u = simde_mm_or_si128(v_against_l, v_against_u);
+            const auto mask = simde_mm_movemask_epi8(v_against_l_or_u);
 
             if (0xffff == cachemask)
             {
@@ -416,7 +395,6 @@ public:
 
             return false;
         }
-#endif
 
         if (*pos == l || *pos == u)
         {
@@ -444,15 +422,14 @@ public:
 
         while (haystack < haystack_end)
         {
-#ifdef __SSE4_1__
             if (haystack + n <= haystack_end && pageSafe(haystack))
             {
-                const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                const auto v_against_l = _mm_cmpeq_epi8(v_haystack, patl);
-                const auto v_against_u = _mm_cmpeq_epi8(v_haystack, patu);
-                const auto v_against_l_or_u = _mm_or_si128(v_against_l, v_against_u);
+                const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                const auto v_against_l = simde_mm_cmpeq_epi8(v_haystack, patl);
+                const auto v_against_u = simde_mm_cmpeq_epi8(v_haystack, patu);
+                const auto v_against_l_or_u = simde_mm_or_si128(v_against_l, v_against_u);
 
-                const auto mask = _mm_movemask_epi8(v_against_l_or_u);
+                const auto mask = simde_mm_movemask_epi8(v_against_l_or_u);
 
                 if (mask == 0)
                 {
@@ -465,11 +442,11 @@ public:
 
                 if (haystack < haystack_end && haystack + n <= haystack_end && pageSafe(haystack))
                 {
-                    const auto v_haystack_offset = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                    const auto v_against_l_offset = _mm_cmpeq_epi8(v_haystack_offset, cachel);
-                    const auto v_against_u_offset = _mm_cmpeq_epi8(v_haystack_offset, cacheu);
-                    const auto v_against_l_or_u_offset = _mm_or_si128(v_against_l_offset, v_against_u_offset);
-                    const auto mask_offset = _mm_movemask_epi8(v_against_l_or_u_offset);
+                    const auto v_haystack_offset = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                    const auto v_against_l_offset = simde_mm_cmpeq_epi8(v_haystack_offset, cachel);
+                    const auto v_against_u_offset = simde_mm_cmpeq_epi8(v_haystack_offset, cacheu);
+                    const auto v_against_l_or_u_offset = simde_mm_or_si128(v_against_l_offset, v_against_u_offset);
+                    const auto mask_offset = simde_mm_movemask_epi8(v_against_l_or_u_offset);
 
                     if (0xffff == cachemask)
                     {
@@ -496,7 +473,6 @@ public:
                     continue;
                 }
             }
-#endif
 
             if (haystack == haystack_end)
                 return haystack_end;
@@ -542,13 +518,11 @@ private:
     /// first character in `needle`
     uint8_t first{};
 
-#ifdef __SSE4_1__
     /// vector filled `first` for determining leftmost position of the first symbol
-    __m128i pattern;
+    simde__m128i pattern;
     /// vector of first 16 characters of `needle`
-    __m128i cache = _mm_setzero_si128();
+    simde__m128i cache = simde_mm_setzero_si128();
     int cachemask{};
-#endif
 
 public:
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
@@ -560,34 +534,31 @@ public:
 
         first = *needle;
 
-#ifdef __SSE4_1__
-        pattern = _mm_set1_epi8(first);
+        pattern = simde_mm_set1_epi8(first);
 
         auto needle_pos = needle;
 
         for (const auto i : ext::range(0, n))
         {
-            cache = _mm_srli_si128(cache, 1);
+            cache = simde_mm_srli_si128(cache, 1);
 
             if (needle_pos != needle_end)
             {
-                cache = _mm_insert_epi8(cache, *needle_pos, n - 1);
+                cache = simde_mm_insert_epi8(cache, *needle_pos, n - 1);
                 cachemask |= 1 << i;
                 ++needle_pos;
             }
         }
-#endif
     }
 
     template <typename CharT, typename = std::enable_if_t<sizeof(CharT) == 1>>
     ALWAYS_INLINE bool compare(const CharT * /*haystack*/, const CharT * /*haystack_end*/, const CharT * pos) const
     {
-#ifdef __SSE4_1__
         if (pageSafe(pos))
         {
-            const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos));
-            const auto v_against_cache = _mm_cmpeq_epi8(v_haystack, cache);
-            const auto mask = _mm_movemask_epi8(v_against_cache);
+            const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos));
+            const auto v_against_cache = simde_mm_cmpeq_epi8(v_haystack, cache);
+            const auto mask = simde_mm_movemask_epi8(v_against_cache);
 
             if (0xffff == cachemask)
             {
@@ -608,7 +579,6 @@ public:
 
             return false;
         }
-#endif
 
         if (*pos == first)
         {
@@ -633,14 +603,13 @@ public:
 
         while (haystack < haystack_end)
         {
-#ifdef __SSE4_1__
             if (haystack + n <= haystack_end && pageSafe(haystack))
             {
                 /// find first character
-                const auto v_haystack = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                const auto v_against_pattern = _mm_cmpeq_epi8(v_haystack, pattern);
+                const auto v_haystack = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                const auto v_against_pattern = simde_mm_cmpeq_epi8(v_haystack, pattern);
 
-                const auto mask = _mm_movemask_epi8(v_against_pattern);
+                const auto mask = simde_mm_movemask_epi8(v_against_pattern);
 
                 /// first character not present in 16 octets starting at `haystack`
                 if (mask == 0)
@@ -655,9 +624,9 @@ public:
                 if (haystack < haystack_end && haystack + n <= haystack_end && pageSafe(haystack))
                 {
                     /// check for first 16 octets
-                    const auto v_haystack_offset = _mm_loadu_si128(reinterpret_cast<const __m128i *>(haystack));
-                    const auto v_against_cache = _mm_cmpeq_epi8(v_haystack_offset, cache);
-                    const auto mask_offset = _mm_movemask_epi8(v_against_cache);
+                    const auto v_haystack_offset = simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(haystack));
+                    const auto v_against_cache = simde_mm_cmpeq_epi8(v_haystack_offset, cache);
+                    const auto mask_offset = simde_mm_movemask_epi8(v_against_cache);
 
                     if (0xffff == cachemask)
                     {
@@ -681,7 +650,6 @@ public:
                     continue;
                 }
             }
-#endif
 
             if (haystack == haystack_end)
                 return haystack_end;

@@ -16,9 +16,7 @@
 #include <memory>
 #include <utility>
 
-#ifdef __SSE4_2__
-#    include <nmmintrin.h>
-#endif
+#include <sse4.2.h>
 
 namespace DB
 {
@@ -62,11 +60,7 @@ struct NgramDistanceImpl
     static ALWAYS_INLINE UInt16 calculateUTF8Hash(const CodePoint * code_points)
     {
         UInt64 combined = (static_cast<UInt64>(code_points[0]) << 32) | code_points[1];
-#ifdef __SSE4_2__
-        return _mm_crc32_u64(code_points[2], combined) & 0xFFFFu;
-#else
-        return (intHashCRC32(combined) ^ intHashCRC32(code_points[2])) & 0xFFFFu;
-#endif
+        return simde_mm_crc32_u64(code_points[2], combined) & 0xFFFFu;
     }
 
     template <size_t Offset, class Container, size_t... I>

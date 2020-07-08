@@ -2,9 +2,7 @@
 #include <Poco/UTF8Encoding.h>
 #include <Common/UTF8Helpers.h>
 
-#ifdef __SSE2__
-#include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 
 namespace DB
@@ -165,45 +163,44 @@ private:
 
     static void array(const UInt8 * src, const UInt8 * src_end, UInt8 * dst)
     {
-#ifdef __SSE2__
-        static constexpr auto bytes_sse = sizeof(__m128i);
+        static constexpr auto bytes_sse = sizeof(simde__m128i);
         auto src_end_sse = src + (src_end - src) / bytes_sse * bytes_sse;
 
         /// SSE2 packed comparison operate on signed types, hence compare (c < 0) instead of (c > 0x7f)
-        const auto v_zero = _mm_setzero_si128();
-        const auto v_not_case_lower_bound = _mm_set1_epi8(not_case_lower_bound - 1);
-        const auto v_not_case_upper_bound = _mm_set1_epi8(not_case_upper_bound + 1);
-        const auto v_flip_case_mask = _mm_set1_epi8(flip_case_mask);
+        const auto v_zero = simde_mm_setzero_si128();
+        const auto v_not_case_lower_bound = simde_mm_set1_epi8(not_case_lower_bound - 1);
+        const auto v_not_case_upper_bound = simde_mm_set1_epi8(not_case_upper_bound + 1);
+        const auto v_flip_case_mask = simde_mm_set1_epi8(flip_case_mask);
 
         while (src < src_end_sse)
         {
-            const auto chars = _mm_loadu_si128(reinterpret_cast<const __m128i *>(src));
+            const auto chars = simde_mm_loadu_si128(src);
 
             /// check for ASCII
-            const auto is_not_ascii = _mm_cmplt_epi8(chars, v_zero);
-            const auto mask_is_not_ascii = _mm_movemask_epi8(is_not_ascii);
+            const auto is_not_ascii = simde_mm_cmplt_epi8(chars, v_zero);
+            const auto mask_is_not_ascii = simde_mm_movemask_epi8(is_not_ascii);
 
             /// ASCII
             if (mask_is_not_ascii == 0)
             {
                 const auto is_not_case
-                    = _mm_and_si128(_mm_cmpgt_epi8(chars, v_not_case_lower_bound), _mm_cmplt_epi8(chars, v_not_case_upper_bound));
-                const auto mask_is_not_case = _mm_movemask_epi8(is_not_case);
+                    = simde_mm_and_si128(simde_mm_cmpgt_epi8(chars, v_not_case_lower_bound), simde_mm_cmplt_epi8(chars, v_not_case_upper_bound));
+                const auto mask_is_not_case = simde_mm_movemask_epi8(is_not_case);
 
                 /// everything in correct case ASCII
                 if (mask_is_not_case == 0)
-                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst), chars);
+                    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst), chars);
                 else
                 {
                     /// ASCII in mixed case
                     /// keep `flip_case_mask` only where necessary, zero out elsewhere
-                    const auto xor_mask = _mm_and_si128(v_flip_case_mask, is_not_case);
+                    const auto xor_mask = simde_mm_and_si128(v_flip_case_mask, is_not_case);
 
                     /// flip case by applying calculated mask
-                    const auto cased_chars = _mm_xor_si128(chars, xor_mask);
+                    const auto cased_chars = simde_mm_xor_si128(chars, xor_mask);
 
                     /// store result back to destination
-                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst), cased_chars);
+                    simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst), cased_chars);
                 }
 
                 src += bytes_sse;
@@ -228,7 +225,6 @@ private:
                 }
             }
         }
-#endif
         /// handle remaining symbols
         while (src < src_end)
             toCase(src, src_end, dst);

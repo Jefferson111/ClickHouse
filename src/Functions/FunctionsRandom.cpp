@@ -4,8 +4,9 @@
 #include <Common/HashTable/Hash.h>
 #include <Common/randomSeed.h>
 #include <common/unaligned.h>
+
 #if USE_MULTITARGET_CODE
-#  include <x86intrin.h>
+#include <avx2.h>
 #endif
 
 
@@ -103,16 +104,16 @@ using namespace VectorExtension;
  */
 inline UInt64x4 combineValues(UInt64x4 a, UInt64x4 b)
 {
-    auto xa = reinterpret_cast<__m256i>(a);
-    auto xb = reinterpret_cast<__m256i>(b);
+    auto xa = reinterpret_cast<simde__m256i>(a);
+    auto xb = reinterpret_cast<simde__m256i>(b);
     /// Every state is 8-byte value and we need to use only 4 from the middle.
     /// Swap the low half and the high half of every state to move these bytes from the middle to sides.
     /// xa = xa[1, 0, 3, 2, 5, 4, 7, 6]
-    xa = _mm256_shuffle_epi32(xa, 0xb1);
+    xa = simde_mm256_shuffle_epi32(xa, 0xb1);
     /// Now every 8-byte value in xa is xx....xx and every value in xb is ..xxxx.. where x is random byte we want to use.
     /// Just blend them to get the result vector.
     /// result = xa[0],xb[1,2],xa[3,4],xb[5,6],xa[7,8],xb[9,10],xa[11,12],xb[13,14],xa[15]
-    __m256i result = _mm256_blend_epi16(xa, xb, 0x66);
+    simde__m256i result = simde_mm256_blend_epi16(xa, xb, 0x66);
     return reinterpret_cast<UInt64x4>(result);
 }
 

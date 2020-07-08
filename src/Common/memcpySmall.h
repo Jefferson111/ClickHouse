@@ -2,8 +2,7 @@
 
 #include <string.h>
 
-#ifdef __SSE2__
-#include <emmintrin.h>
+#include <sse2.h>
 
 
 /** memcpy function could work suboptimal if all the following conditions are met:
@@ -33,8 +32,8 @@ namespace detail
     {
         while (n > 0)
         {
-            _mm_storeu_si128(reinterpret_cast<__m128i *>(dst),
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(src)));
+            simde_mm_storeu_si128(reinterpret_cast<simde__m128i *>(dst),
+                simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(src)));
 
             dst += 16;
             src += 16;
@@ -55,11 +54,3 @@ inline void memcpySmallAllowReadWriteOverflow15(void * __restrict dst, const voi
   * This function was unused, and also it requires special handling for Valgrind and ASan.
   */
 
-#else    /// Implementation for other platforms.
-
-inline void memcpySmallAllowReadWriteOverflow15(void * __restrict dst, const void * __restrict src, size_t n)
-{
-    memcpy(dst, src, n);
-}
-
-#endif

@@ -4,9 +4,7 @@
 #include <ext/range.h>
 #include <DataTypes/DataTypeNothing.h>
 
-#ifdef __SSE2__
-#include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 namespace DB
 {
@@ -407,24 +405,24 @@ size_t MergeTreeRangeReader::ReadResult::numZerosInTail(const UInt8 * begin, con
 {
     size_t count = 0;
 
-#if defined(__SSE2__) && defined(__POPCNT__)
-    const __m128i zero16 = _mm_setzero_si128();
+#if defined(__POPCNT__)
+    const simde__m128i zero16 = simde_mm_setzero_si128();
     while (end - begin >= 64)
     {
         end -= 64;
         const auto * pos = end;
         UInt64 val =
-                static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos)),
+                static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos)),
                         zero16)))
-                | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 16)),
+                | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos + 16)),
                         zero16))) << 16u)
-                | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 32)),
+                | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos + 32)),
                         zero16))) << 32u)
-                | (static_cast<UInt64>(_mm_movemask_epi8(_mm_cmpgt_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(pos + 48)),
+                | (static_cast<UInt64>(simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+                        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(pos + 48)),
                         zero16))) << 48u);
         if (val == 0)
             count += 64;

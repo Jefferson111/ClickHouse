@@ -28,9 +28,7 @@
 #undef USE_OPENCL
 #endif
 
-#ifdef __SSE2__
-    #include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 namespace DB
 {
@@ -361,7 +359,6 @@ ColumnPtr ColumnVector<T>::filter(const IColumn::Filter & filt, ssize_t result_s
     const UInt8 * filt_end = filt_pos + size;
     const T * data_pos = data.data();
 
-#ifdef __SSE2__
     /** A slightly more optimized version.
         * Based on the assumption that often pieces of consecutive values
         *  completely pass or do not pass the filter.
@@ -369,12 +366,12 @@ ColumnPtr ColumnVector<T>::filter(const IColumn::Filter & filt, ssize_t result_s
         */
 
     static constexpr size_t SIMD_BYTES = 16;
-    const __m128i zero16 = _mm_setzero_si128();
+    const simde__m128i zero16 = simde_mm_setzero_si128();
     const UInt8 * filt_end_sse = filt_pos + size / SIMD_BYTES * SIMD_BYTES;
 
     while (filt_pos < filt_end_sse)
     {
-        int mask = _mm_movemask_epi8(_mm_cmpgt_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(filt_pos)), zero16));
+        int mask = simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(simde_mm_loadu_si128(filt_pos), zero16));
 
         if (0 == mask)
         {
@@ -394,7 +391,6 @@ ColumnPtr ColumnVector<T>::filter(const IColumn::Filter & filt, ssize_t result_s
         filt_pos += SIMD_BYTES;
         data_pos += SIMD_BYTES;
     }
-#endif
 
     while (filt_pos < filt_end)
     {

@@ -170,20 +170,13 @@ namespace Hashes
         }
     };
 
-    #ifdef __SSE4_2__
-    #include <nmmintrin.h>
-    #endif
+#include <sse4.2.h>
 
     struct CRC32Hash
     {
         size_t operator()(Key x) const
         {
-    #ifdef __SSE4_2__
-            return _mm_crc32_u64(-1ULL, x);
-    #else
-            /// On other platforms we do not have CRC32. NOTE This can be confusing.
-            return intHash64(x);
-    #endif
+            return simde_mm_crc32_u64(-1ULL, x);
         }
     };
 

@@ -19,10 +19,7 @@
 #include <ext/bit_cast.h>
 #include <algorithm>
 
-#ifdef __SSE4_1__
-    #include <smmintrin.h>
-#endif
-
+#include <sse4.1.h>
 
 namespace DB
 {
@@ -66,10 +63,10 @@ enum class ScaleMode
 enum class RoundingMode
 {
 #ifdef __SSE4_1__
-    Round   = _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC,
-    Floor   = _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC,
-    Ceil    = _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC,
-    Trunc   = _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC,
+    Round   = SIMDE_MM_FROUND_TO_NEAREST_INT | SIMDE_MM_FROUND_NO_EXC,
+    Floor   = SIMDE_MM_FROUND_TO_NEG_INF | SIMDE_MM_FROUND_NO_EXC,
+    Ceil    = SIMDE_MM_FROUND_TO_POS_INF | SIMDE_MM_FROUND_NO_EXC,
+    Trunc   = SIMDE_MM_FROUND_TO_ZERO | SIMDE_MM_FROUND_NO_EXC,
 #else
     Round   = 8,    /// Values are correspond to above just in case.
     Floor   = 9,
@@ -170,9 +167,6 @@ struct IntegerRoundingComputation
 
 };
 
-
-#ifdef __SSE4_1__
-
 template <typename T>
 class BaseFloatRoundingComputation;
 
@@ -181,15 +175,15 @@ class BaseFloatRoundingComputation<Float32>
 {
 public:
     using ScalarType = Float32;
-    using VectorType = __m128;
+    using VectorType = simde__m128;
     static const size_t data_count = 4;
 
-    static VectorType load(const ScalarType * in) { return _mm_loadu_ps(in); }
-    static VectorType load1(const ScalarType in) { return _mm_load1_ps(&in); }
-    static void store(ScalarType * out, VectorType val) { _mm_storeu_ps(out, val);}
-    static VectorType multiply(VectorType val, VectorType scale) { return _mm_mul_ps(val, scale); }
-    static VectorType divide(VectorType val, VectorType scale) { return _mm_div_ps(val, scale); }
-    template <RoundingMode mode> static VectorType apply(VectorType val) { return _mm_round_ps(val, int(mode)); }
+    static VectorType load(const ScalarType * in) { return simde_mm_loadu_ps(in); }
+    static VectorType load1(const ScalarType in) { return simde_mm_load1_ps(&in); }
+    static void store(ScalarType * out, VectorType val) { simde_mm_storeu_ps(out, val);}
+    static VectorType multiply(VectorType val, VectorType scale) { return simde_mm_mul_ps(val, scale); }
+    static VectorType divide(VectorType val, VectorType scale) { return simde_mm_div_ps(val, scale); }
+    template <RoundingMode mode> static VectorType apply(VectorType val) { return simde_mm_round_ps(val, int(mode)); }
 
     static VectorType prepare(size_t scale)
     {
@@ -202,75 +196,21 @@ class BaseFloatRoundingComputation<Float64>
 {
 public:
     using ScalarType = Float64;
-    using VectorType = __m128d;
+    using VectorType = simde__m128d;
     static const size_t data_count = 2;
 
-    static VectorType load(const ScalarType * in) { return _mm_loadu_pd(in); }
-    static VectorType load1(const ScalarType in) { return _mm_load1_pd(&in); }
-    static void store(ScalarType * out, VectorType val) { _mm_storeu_pd(out, val);}
-    static VectorType multiply(VectorType val, VectorType scale) { return _mm_mul_pd(val, scale); }
-    static VectorType divide(VectorType val, VectorType scale) { return _mm_div_pd(val, scale); }
-    template <RoundingMode mode> static VectorType apply(VectorType val) { return _mm_round_pd(val, int(mode)); }
+    static VectorType load(const ScalarType * in) { return simde_mm_loadu_pd(in); }
+    static VectorType load1(const ScalarType in) { return simde_mm_load1_pd(&in); }
+    static void store(ScalarType * out, VectorType val) { simde_mm_storeu_pd(out, val);}
+    static VectorType multiply(VectorType val, VectorType scale) { return simde_mm_mul_pd(val, scale); }
+    static VectorType divide(VectorType val, VectorType scale) { return simde_mm_div_pd(val, scale); }
+    template <RoundingMode mode> static VectorType apply(VectorType val) { return simde_mm_round_pd(val, int(mode)); }
 
     static VectorType prepare(size_t scale)
     {
         return load1(scale);
     }
 };
-
-#else
-
-/// Implementation for ARM. Not vectorized.
-
-inline float roundWithMode(float x, RoundingMode mode)
-{
-    switch (mode)
-    {
-        case RoundingMode::Round: return roundf(x);
-        case RoundingMode::Floor: return floorf(x);
-        case RoundingMode::Ceil: return ceilf(x);
-        case RoundingMode::Trunc: return truncf(x);
-    }
-
-    __builtin_unreachable();
-}
-
-inline double roundWithMode(double x, RoundingMode mode)
-{
-    switch (mode)
-    {
-        case RoundingMode::Round: return round(x);
-        case RoundingMode::Floor: return floor(x);
-        case RoundingMode::Ceil: return ceil(x);
-        case RoundingMode::Trunc: return trunc(x);
-    }
-
-    __builtin_unreachable();
-}
-
-template <typename T>
-class BaseFloatRoundingComputation
-{
-public:
-    using ScalarType = T;
-    using VectorType = T;
-    static const size_t data_count = 1;
-
-    static VectorType load(const ScalarType * in) { return *in; }
-    static VectorType load1(const ScalarType in) { return in; }
-    static VectorType store(ScalarType * out, ScalarType val) { return *out = val;}
-    static VectorType multiply(VectorType val, VectorType scale) { return val * scale; }
-    static VectorType divide(VectorType val, VectorType scale) { return val / scale; }
-    template <RoundingMode mode> static VectorType apply(VectorType val) { return roundWithMode(val, mode); }
-
-    static VectorType prepare(size_t scale)
-    {
-        return load1(scale);
-    }
-};
-
-#endif
-
 
 /** Implementation of low-level round-off functions for floating-point values.
   */

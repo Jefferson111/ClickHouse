@@ -15,9 +15,7 @@
 #include <Common/HashTable/HashMap.h>
 #include <Interpreters/AggregationCommon.h>
 
-#ifdef __SSE4_1__
-    #include <smmintrin.h>
-#endif
+#include <sse4.1.h>
 
 
 /** Do this:
@@ -195,23 +193,20 @@ inline bool compare_byUInt64_bitAnd(const char * p1, const char * p2)
          & (reinterpret_cast<const UInt64 *>(p1)[1] == reinterpret_cast<const UInt64 *>(p2)[1]);
 }
 
-#ifdef __SSE4_1__
 
 inline bool compare_byIntSSE(const char * p1, const char * p2)
 {
-    return 0xFFFF == _mm_movemask_epi8(_mm_cmpeq_epi8(
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(p1)),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(p2))));
+    return 0xFFFF == simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+        simde_mm_loadu_si128(p1),
+        simde_mm_loadu_si128(p2)));
 }
 
 inline bool compare_byFloatSSE(const char * p1, const char * p2)
 {
-    return !_mm_movemask_ps(_mm_cmpneq_ps(                    /// Looks like incorrect while comparing subnormal floats.
-        _mm_loadu_ps(reinterpret_cast<const float *>(p1)),
-        _mm_loadu_ps(reinterpret_cast<const float *>(p2))));
+    return !simde_mm_movemask_ps(simde_mm_cmpneq_ps(                    /// Looks like incorrect while comparing subnormal floats.
+        simde_mm_loadu_ps(reinterpret_cast<const float *>(p1)),
+        simde_mm_loadu_ps(reinterpret_cast<const float *>(p2))));
 }
-
-#endif
 
 
 template <bool compare(const char *, const char *)>
@@ -270,15 +265,15 @@ inline bool memequal_sse41(const char * p1, const char * p2, size_t size)
 //    const char * p1_end = p1 + size;
     const char * p1_end_16 = p1 + size / 16 * 16;
 
-    __m128i zero16 = _mm_setzero_si128();
+    simde__m128i zero16 = simde_mm_setzero_si128();
 
     while (p1 < p1_end_16)
     {
-        if (!_mm_testc_si128(
+        if (!simde_mm_testc_si128(
             zero16,
-            _mm_xor_si128(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(p1)),
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(p2)))))
+            simde_mm_xor_si128(
+                simde_mm_loadu_si128(p1),
+                simde_mm_loadu_si128(p2))))
             return false;
 
         p1 += 16;
@@ -321,31 +316,31 @@ inline bool memequal_sse41(const char * p1, const char * p2, size_t size)
 
 inline bool memequal_sse41_wide(const char * p1, const char * p2, size_t size)
 {
-    __m128i zero16 = _mm_setzero_si128();
+    simde__m128i zero16 = simde_mm_setzero_si128();
 //    const char * p1_end = p1 + size;
 
     while (size >= 64)
     {
-        if (_mm_testc_si128(
+        if (simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[0]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[0])))
-            && _mm_testc_si128(
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[0]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[0])))
+            && simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[1]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[1])))
-            && _mm_testc_si128(
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[1]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[1])))
+            && simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[2]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[2])))
-            && _mm_testc_si128(
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[2]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[2])))
+            && simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[3]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[3]))))
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[3]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[3]))))
         {
             p1 += 64;
             p2 += 64;
@@ -358,27 +353,27 @@ inline bool memequal_sse41_wide(const char * p1, const char * p2, size_t size)
     switch ((size % 64) / 16)
     {
         case 3:
-            if (!_mm_testc_si128(
+            if (!simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[2]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[2]))))
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[2]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[2]))))
                 return false;
             [[fallthrough]];
         case 2:
-            if (!_mm_testc_si128(
+            if (!simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[1]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[1]))))
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[1]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[1]))))
                 return false;
             [[fallthrough]];
         case 1:
-            if (!_mm_testc_si128(
+            if (!simde_mm_testc_si128(
                 zero16,
-                _mm_xor_si128(
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p1)[0]),
-                    _mm_loadu_si128(&reinterpret_cast<const __m128i *>(p2)[0]))))
+                simde_mm_xor_si128(
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p1)[0]),
+                    simde_mm_loadu_si128(&reinterpret_cast<const simde__m128i *>(p2)[0]))))
                 return false;
     }
 

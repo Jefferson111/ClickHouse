@@ -13,9 +13,7 @@
 
 #include <IO/WriteHelpers.h>
 
-#ifdef __SSE2__
-    #include <emmintrin.h>
-#endif
+#include <sse2.h>
 
 
 namespace DB
@@ -258,7 +256,6 @@ ColumnPtr ColumnFixedString::filter(const IColumn::Filter & filt, ssize_t result
     const UInt8 * filt_end = filt_pos + col_size;
     const UInt8 * data_pos = chars.data();
 
-#ifdef __SSE2__
     /** A slightly more optimized version.
         * Based on the assumption that often pieces of consecutive values
         *  completely pass or do not pass the filter.
@@ -266,13 +263,13 @@ ColumnPtr ColumnFixedString::filter(const IColumn::Filter & filt, ssize_t result
         */
 
     static constexpr size_t SIMD_BYTES = 16;
-    const __m128i zero16 = _mm_setzero_si128();
+    const simde__m128i zero16 = simde_mm_setzero_si128();
     const UInt8 * filt_end_sse = filt_pos + col_size / SIMD_BYTES * SIMD_BYTES;
     const size_t chars_per_simd_elements = SIMD_BYTES * n;
 
     while (filt_pos < filt_end_sse)
     {
-        int mask = _mm_movemask_epi8(_mm_cmpgt_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(filt_pos)), zero16));
+        int mask = simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(simde_mm_loadu_si128(filt_pos), zero16));
 
         if (0 == mask)
         {
@@ -301,7 +298,6 @@ ColumnPtr ColumnFixedString::filter(const IColumn::Filter & filt, ssize_t result
 
         filt_pos += SIMD_BYTES;
     }
-#endif
 
     size_t res_chars_size = res->chars.size();
     while (filt_pos < filt_end)

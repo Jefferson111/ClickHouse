@@ -7,9 +7,7 @@
 
 #include <Core/Types.h>
 
-#ifdef __SSE4_2__
-#include <nmmintrin.h>
-#endif
+#include <sse4.2.h>
 
 
 namespace DB
@@ -83,25 +81,16 @@ struct UInt128Hash
     }
 };
 
-#ifdef __SSE4_2__
-
 struct UInt128HashCRC32
 {
     size_t operator()(UInt128 x) const
     {
         UInt64 crc = -1ULL;
-        crc = _mm_crc32_u64(crc, x.low);
-        crc = _mm_crc32_u64(crc, x.high);
+        crc = simde_mm_crc32_u64(crc, x.low);
+        crc = simde_mm_crc32_u64(crc, x.high);
         return crc;
     }
 };
-
-#else
-
-/// On other platforms we do not use CRC32. NOTE This can be confusing.
-struct UInt128HashCRC32 : public UInt128Hash {};
-
-#endif
 
 struct UInt128TrivialHash
 {
@@ -160,27 +149,18 @@ struct UInt256Hash
     }
 };
 
-#ifdef __SSE4_2__
-
 struct UInt256HashCRC32
 {
     size_t operator()(UInt256 x) const
     {
         UInt64 crc = -1ULL;
-        crc = _mm_crc32_u64(crc, x.a);
-        crc = _mm_crc32_u64(crc, x.b);
-        crc = _mm_crc32_u64(crc, x.c);
-        crc = _mm_crc32_u64(crc, x.d);
+        crc = simde_mm_crc32_u64(crc, x.a);
+        crc = simde_mm_crc32_u64(crc, x.b);
+        crc = simde_mm_crc32_u64(crc, x.c);
+        crc = simde_mm_crc32_u64(crc, x.d);
         return crc;
     }
 };
-
-#else
-
-/// We do not need to use CRC32 on other platforms. NOTE This can be confusing.
-struct UInt256HashCRC32 : public UInt256Hash {};
-
-#endif
 
 }
 

@@ -18,9 +18,7 @@
 #include <Common/HashTable/HashMap.h>
 #include <Interpreters/AggregationCommon.h>
 
-#ifdef __SSE4_2__
-    #include <smmintrin.h>
-#endif
+#include <sse4.2.h>
 
 
 /** Do this:
@@ -365,13 +363,13 @@ struct SMetroHash64
         do
         {
             uint64_t word = *reinterpret_cast<const uint64_t *>(pos);
-            res = _mm_crc32_u64(res, word);
+            res = simde_mm_crc32_u64(res, word);
 
             pos += 8;
         } while (pos + 8 < end);
 
         uint64_t word = *reinterpret_cast<const uint64_t *>(end - 8);
-        res = _mm_crc32_u64(res, word);
+        res = simde_mm_crc32_u64(res, word);
 
         return res;
     }
@@ -402,8 +400,8 @@ struct CRC32ILPHash
         {
             uint64_t word0 = reinterpret_cast<const uint64_t *>(pos)[0];
             uint64_t word1 = reinterpret_cast<const uint64_t *>(pos)[1];
-            res0 = _mm_crc32_u64(res0, word0);
-            res1 = _mm_crc32_u64(res1, word1);
+            res0 = simde_mm_crc32_u64(res0, word0);
+            res1 = simde_mm_crc32_u64(res1, word1);
 
             pos += 16;
         } while (pos < end_16);
@@ -414,8 +412,8 @@ struct CRC32ILPHash
     /*    return HashLen16(Rotate(word0 - word1, 43) + Rotate(res0, 30) + res1,
             word0 + Rotate(word1 ^ k3, 20) - res0 + size);*/
 
-        res0 = _mm_crc32_u64(res0, word0);
-        res1 = _mm_crc32_u64(res1, word1);
+        res0 = simde_mm_crc32_u64(res0, word0);
+        res1 = simde_mm_crc32_u64(res1, word1);
 
         return hashLen16(res0, res1);
     }

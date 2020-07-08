@@ -4,11 +4,7 @@
 
 #include <cstring>
 
-#ifdef __SSE4_1__
-#    include <emmintrin.h>
-#    include <smmintrin.h>
-#    include <tmmintrin.h>
-#endif
+#include <sse4.1.h>
 
 namespace DB
 {
@@ -71,76 +67,6 @@ SOFTWARE.
  * +--------------------+------------+-------------+------------+-------------+
  */
 
-    static inline UInt8 isValidUTF8Naive(const UInt8 * data, UInt64 len)
-    {
-        while (len)
-        {
-            int bytes;
-            const UInt8 byte1 = data[0];
-            /* 00..7F */
-            if (byte1 <= 0x7F)
-            {
-                bytes = 1;
-            }
-            /* C2..DF, 80..BF */
-            else if (len >= 2 && byte1 >= 0xC2 && byte1 <= 0xDF && static_cast<Int8>(data[1]) <= static_cast<Int8>(0xBF))
-            {
-                bytes = 2;
-            }
-            else if (len >= 3)
-            {
-                const UInt8 byte2 = data[1];
-                bool byte2_ok = static_cast<Int8>(byte2) <= static_cast<Int8>(0xBF);
-                bool byte3_ok = static_cast<Int8>(data[2]) <= static_cast<Int8>(0xBF);
-
-                if (byte2_ok && byte3_ok &&
-                    /* E0, A0..BF, 80..BF */
-                    ((byte1 == 0xE0 && byte2 >= 0xA0) ||
-                     /* E1..EC, 80..BF, 80..BF */
-                     (byte1 >= 0xE1 && byte1 <= 0xEC) ||
-                     /* ED, 80..9F, 80..BF */
-                     (byte1 == 0xED && byte2 <= 0x9F) ||
-                     /* EE..EF, 80..BF, 80..BF */
-                     (byte1 >= 0xEE && byte1 <= 0xEF)))
-                {
-                    bytes = 3;
-                }
-                else if (len >= 4)
-                {
-                    bool byte4_ok = static_cast<Int8>(data[3]) <= static_cast<Int8>(0xBF);
-                    if (byte2_ok && byte3_ok && byte4_ok &&
-                        /* F0, 90..BF, 80..BF, 80..BF */
-                        ((byte1 == 0xF0 && byte2 >= 0x90) ||
-                         /* F1..F3, 80..BF, 80..BF, 80..BF */
-                         (byte1 >= 0xF1 && byte1 <= 0xF3) ||
-                         /* F4, 80..8F, 80..BF, 80..BF */
-                         (byte1 == 0xF4 && byte2 <= 0x8F)))
-                    {
-                        bytes = 4;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                return false;
-            }
-            len -= bytes;
-            data += bytes;
-        }
-        return true;
-    }
-
-#ifndef __SSE4_1__
-    static inline UInt8 isValidUTF8(const UInt8 * data, UInt64 len) { return isValidUTF8Naive(data, len); }
-#else
     static inline UInt8 isValidUTF8(const UInt8 * data, UInt64 len)
     {
         /*
@@ -150,19 +76,19 @@ SOFTWARE.
         * 0xE0 ~ 0xEF --> 2
         * 0xF0 ~ 0xFF --> 3
         */
-        const __m128i first_len_tbl = _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3);
+        const simde__m128i first_len_tbl = simde_mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3);
 
         /* Map "First Byte" to 8-th item of range table (0xC2 ~ 0xF4) */
-        const __m128i first_range_tbl = _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8);
+        const simde__m128i first_range_tbl = simde_mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8);
 
         /*
         * Range table, map range index to min and max values
         */
-        const __m128i range_min_tbl
-            = _mm_setr_epi8(0x00, 0x80, 0x80, 0x80, 0xA0, 0x80, 0x90, 0x80, 0xC2, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F);
+        const simde__m128i range_min_tbl
+            = simde_mm_setr_epi8(0x00, 0x80, 0x80, 0x80, 0xA0, 0x80, 0x90, 0x80, 0xC2, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F);
 
-        const __m128i range_max_tbl
-            = _mm_setr_epi8(0x7F, 0xBF, 0xBF, 0xBF, 0xBF, 0x9F, 0xBF, 0x8F, 0xF4, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
+        const simde__m128i range_max_tbl
+            = simde_mm_setr_epi8(0x7F, 0xBF, 0xBF, 0xBF, 0xBF, 0x9F, 0xBF, 0x8F, 0xF4, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
 
         /*
         * Tables for fast handling of four special First Bytes(E0,ED,F0,F4), after
@@ -181,53 +107,53 @@ SOFTWARE.
         */
 
         /* index1 -> E0, index14 -> ED */
-        const __m128i df_ee_tbl = _mm_setr_epi8(0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0);
+        const simde__m128i df_ee_tbl = simde_mm_setr_epi8(0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0);
 
         /* index1 -> F0, index5 -> F4 */
-        const __m128i ef_fe_tbl = _mm_setr_epi8(0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        const simde__m128i ef_fe_tbl = simde_mm_setr_epi8(0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-        __m128i prev_input = _mm_set1_epi8(0);
-        __m128i prev_first_len = _mm_set1_epi8(0);
-        __m128i error = _mm_set1_epi8(0);
+        simde__m128i prev_input = simde_mm_set1_epi8(0);
+        simde__m128i prev_first_len = simde_mm_set1_epi8(0);
+        simde__m128i error = simde_mm_set1_epi8(0);
 
-        auto check_packed = [&](__m128i input) noexcept
+        auto check_packed = [&](simde__m128i input) noexcept
         {
             /* high_nibbles = input >> 4 */
-            const __m128i high_nibbles = _mm_and_si128(_mm_srli_epi16(input, 4), _mm_set1_epi8(0x0F));
+            const simde__m128i high_nibbles = simde_mm_and_si128(simde_mm_srli_epi16(input, 4), simde_mm_set1_epi8(0x0F));
 
             /* first_len = legal character length minus 1 */
             /* 0 for 00~7F, 1 for C0~DF, 2 for E0~EF, 3 for F0~FF */
             /* first_len = first_len_tbl[high_nibbles] */
-            __m128i first_len = _mm_shuffle_epi8(first_len_tbl, high_nibbles);
+            simde__m128i first_len = simde_mm_shuffle_epi8(first_len_tbl, high_nibbles);
 
             /* First Byte: set range index to 8 for bytes within 0xC0 ~ 0xFF */
             /* range = first_range_tbl[high_nibbles] */
-            __m128i range = _mm_shuffle_epi8(first_range_tbl, high_nibbles);
+            simde__m128i range = simde_mm_shuffle_epi8(first_range_tbl, high_nibbles);
 
             /* Second Byte: set range index to first_len */
             /* 0 for 00~7F, 1 for C0~DF, 2 for E0~EF, 3 for F0~FF */
             /* range |= (first_len, prev_first_len) << 1 byte */
-            range = _mm_or_si128(range, _mm_alignr_epi8(first_len, prev_first_len, 15));
+            range = simde_mm_or_si128(range, simde_mm_alignr_epi8(first_len, prev_first_len, 15));
 
             /* Third Byte: set range index to saturate_sub(first_len, 1) */
             /* 0 for 00~7F, 0 for C0~DF, 1 for E0~EF, 2 for F0~FF */
-            __m128i tmp1;
-            __m128i tmp2;
+            simde__m128i tmp1;
+            simde__m128i tmp2;
             /* tmp1 = saturate_sub(first_len, 1) */
-            tmp1 = _mm_subs_epu8(first_len, _mm_set1_epi8(1));
+            tmp1 = simde_mm_subs_epu8(first_len, simde_mm_set1_epi8(1));
             /* tmp2 = saturate_sub(prev_first_len, 1) */
-            tmp2 = _mm_subs_epu8(prev_first_len, _mm_set1_epi8(1));
+            tmp2 = simde_mm_subs_epu8(prev_first_len, simde_mm_set1_epi8(1));
             /* range |= (tmp1, tmp2) << 2 bytes */
-            range = _mm_or_si128(range, _mm_alignr_epi8(tmp1, tmp2, 14));
+            range = simde_mm_or_si128(range, simde_mm_alignr_epi8(tmp1, tmp2, 14));
 
             /* Fourth Byte: set range index to saturate_sub(first_len, 2) */
             /* 0 for 00~7F, 0 for C0~DF, 0 for E0~EF, 1 for F0~FF */
             /* tmp1 = saturate_sub(first_len, 2) */
-            tmp1 = _mm_subs_epu8(first_len, _mm_set1_epi8(2));
+            tmp1 = simde_mm_subs_epu8(first_len, simde_mm_set1_epi8(2));
             /* tmp2 = saturate_sub(prev_first_len, 2) */
-            tmp2 = _mm_subs_epu8(prev_first_len, _mm_set1_epi8(2));
+            tmp2 = simde_mm_subs_epu8(prev_first_len, simde_mm_set1_epi8(2));
             /* range |= (tmp1, tmp2) << 3 bytes */
-            range = _mm_or_si128(range, _mm_alignr_epi8(tmp1, tmp2, 13));
+            range = simde_mm_or_si128(range, simde_mm_alignr_epi8(tmp1, tmp2, 13));
 
             /*
              * Now we have below range indices caluclated
@@ -245,30 +171,30 @@ SOFTWARE.
 
             /* Adjust Second Byte range for special First Bytes(E0,ED,F0,F4) */
             /* Overlaps lead to index 9~15, which are illegal in range table */
-            __m128i shift1, pos, range2;
+            simde__m128i shift1, pos, range2;
             /* shift1 = (input, prev_input) << 1 byte */
-            shift1 = _mm_alignr_epi8(input, prev_input, 15);
-            pos = _mm_sub_epi8(shift1, _mm_set1_epi8(0xEF));
+            shift1 = simde_mm_alignr_epi8(input, prev_input, 15);
+            pos = simde_mm_sub_epi8(shift1, simde_mm_set1_epi8(0xEF));
             /*
              * shift1:  | EF  F0 ... FE | FF  00  ... ...  DE | DF  E0 ... EE |
              * pos:     | 0   1      15 | 16  17           239| 240 241    255|
              * pos-240: | 0   0      0  | 0   0            0  | 0   1      15 |
              * pos+112: | 112 113    127|       >= 128        |     >= 128    |
              */
-            tmp1 = _mm_subs_epu8(pos, _mm_set1_epi8(0xF0));
-            range2 = _mm_shuffle_epi8(df_ee_tbl, tmp1);
-            tmp2 = _mm_adds_epu8(pos, _mm_set1_epi8(112));
-            range2 = _mm_add_epi8(range2, _mm_shuffle_epi8(ef_fe_tbl, tmp2));
+            tmp1 = simde_mm_subs_epu8(pos, simde_mm_set1_epi8(0xF0));
+            range2 = simde_mm_shuffle_epi8(df_ee_tbl, tmp1);
+            tmp2 = simde_mm_adds_epu8(pos, simde_mm_set1_epi8(112));
+            range2 = simde_mm_add_epi8(range2, simde_mm_shuffle_epi8(ef_fe_tbl, tmp2));
 
-            range = _mm_add_epi8(range, range2);
+            range = simde_mm_add_epi8(range, range2);
 
             /* Load min and max values per calculated range index */
-            __m128i minv = _mm_shuffle_epi8(range_min_tbl, range);
-            __m128i maxv = _mm_shuffle_epi8(range_max_tbl, range);
+            simde__m128i minv = simde_mm_shuffle_epi8(range_min_tbl, range);
+            simde__m128i maxv = simde_mm_shuffle_epi8(range_max_tbl, range);
 
             /* Check value range */
-            error = _mm_or_si128(error, _mm_cmplt_epi8(input, minv));
-            error = _mm_or_si128(error, _mm_cmpgt_epi8(input, maxv));
+            error = simde_mm_or_si128(error, simde_mm_cmplt_epi8(input, minv));
+            error = simde_mm_or_si128(error, simde_mm_cmpgt_epi8(input, maxv));
 
             prev_input = input;
             prev_first_len = first_len;
@@ -278,18 +204,17 @@ SOFTWARE.
         };
 
         while (len >= 16) // NOLINT
-            check_packed(_mm_loadu_si128(reinterpret_cast<const __m128i *>(data)));
+            check_packed(simde_mm_loadu_si128(data));
 
         /// 0 <= len <= 15 for now. Reading data from data - 1 because of right padding of 15 and left padding
         /// Then zero some bytes from the unknown memory and check again.
         alignas(16) char buf[32];
-        _mm_store_si128(reinterpret_cast<__m128i *>(buf), _mm_loadu_si128(reinterpret_cast<const __m128i *>(data - 1)));
+        simde_mm_store_si128(reinterpret_cast<simde__m128i *>(buf), simde_mm_loadu_si128(data - 1));
         memset(buf + len + 1, 0, 16);
-        check_packed(_mm_loadu_si128(reinterpret_cast<__m128i *>(buf + 1)));
+        check_packed(simde_mm_loadu_si128(buf + 1));
 
-        return _mm_testz_si128(error, error);
+        return simde_mm_testz_si128(error, error);
     }
-#endif
 
     static constexpr bool is_fixed_to_constant = false;
 

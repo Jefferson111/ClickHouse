@@ -26,8 +26,8 @@ inline int cmp(T a, T b)
 /// Results don't depend on the values inside uninitialized memory but Memory Sanitizer cannot see it.
 /// Disable optimized functions if compile with Memory Sanitizer.
 
-#if defined(__SSE2__) && !defined(MEMORY_SANITIZER)
-#include <emmintrin.h>
+#if !defined(MEMORY_SANITIZER)
+#include <sse2.h>
 
 
 /** All functions works under the following assumptions:
@@ -44,9 +44,9 @@ inline int memcmpSmallAllowOverflow15(const Char * a, size_t a_size, const Char 
 
     for (size_t offset = 0; offset < min_size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + offset)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a + offset)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b + offset))));
         mask = ~mask;
 
         if (mask)
@@ -76,9 +76,9 @@ inline int memcmpSmallLikeZeroPaddedAllowOverflow15(const Char * a, size_t a_siz
 
     for (size_t offset = 0; offset < min_size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + offset)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a + offset)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b + offset))));
         mask = ~mask;
 
         if (mask)
@@ -116,12 +116,12 @@ inline int memcmpSmallLikeZeroPaddedAllowOverflow15(const Char * a, size_t a_siz
         cmp = -1;
     }
 
-    const __m128i zero16 = _mm_setzero_si128();
+    const simde__m128i zero16 = simde_mm_setzero_si128();
 
     for (size_t offset = min_size; offset < max_size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpgt_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(longest + offset)),
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpgt_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(longest + offset)),
             zero16));
 
         if (mask)
@@ -146,9 +146,9 @@ inline int memcmpSmallAllowOverflow15(const Char * a, const Char * b, size_t siz
 {
     for (size_t offset = 0; offset < size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + offset)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a + offset)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b + offset))));
         mask = ~mask;
 
         if (mask)
@@ -176,9 +176,9 @@ inline bool memequalSmallAllowOverflow15(const Char * a, size_t a_size, const Ch
 
     for (size_t offset = 0; offset < a_size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + offset)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a + offset)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b + offset))));
         mask = ~mask;
 
         if (mask)
@@ -199,9 +199,9 @@ inline int memcmpSmallMultipleOf16(const Char * a, const Char * b, size_t size)
 {
     for (size_t offset = 0; offset < size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + offset)),
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a + offset)),
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b + offset))));
         mask = ~mask;
 
         if (mask)
@@ -220,9 +220,9 @@ inline int memcmpSmallMultipleOf16(const Char * a, const Char * b, size_t size)
 template <typename Char>
 inline int memcmp16(const Char * a, const Char * b)
 {
-    uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(a)),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(b))));
+    uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a)),
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b))));
     mask = ~mask;
 
     if (mask)
@@ -239,21 +239,21 @@ inline int memcmp16(const Char * a, const Char * b)
   */
 inline bool memequal16(const void * a, const void * b)
 {
-    return 0xFFFF == _mm_movemask_epi8(_mm_cmpeq_epi8(
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(a)),
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(b))));
+    return 0xFFFF == simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(a)),
+        simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(b))));
 }
 
 
 /** Compare memory region to zero */
 inline bool memoryIsZeroSmallAllowOverflow15(const void * data, size_t size)
 {
-    const __m128i zero16 = _mm_setzero_si128();
+    const simde__m128i zero16 = simde_mm_setzero_si128();
 
     for (size_t offset = 0; offset < size; offset += 16)
     {
-        uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(zero16,
-            _mm_loadu_si128(reinterpret_cast<const __m128i *>(reinterpret_cast<const char *>(data) + offset))));
+        uint16_t mask = simde_mm_movemask_epi8(simde_mm_cmpeq_epi8(zero16,
+            simde_mm_loadu_si128(reinterpret_cast<const simde__m128i *>(reinterpret_cast<const char *>(data) + offset))));
         mask = ~mask;
 
         if (mask)
