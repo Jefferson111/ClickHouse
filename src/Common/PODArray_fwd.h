@@ -21,8 +21,11 @@ class PODArray;
 
 /** For columns. Padding is enough to read and write xmm-register at the address of the last element. */
 template <typename T, size_t initial_bytes = 4096, typename TAllocator = Allocator<false>>
-using PaddedPODArray = PODArray<T, initial_bytes, TAllocator, 15, 16>;
-
+using PaddedPODArray = PODArray<T, initial_bytes, TAllocator, 63, 64>;
+/*
+template <typename T, size_t initial_bytes = 4096,typename TAllocator=Allocator<false>>
+using PaddedPODArray = PODArray<T, initial_bytes, TAllocator, 63, 64>;
+*/
 /** A helper for declaring PODArray that uses inline memory.
   * The initial size is set to use all the inline bytes, since using less would
   * only add some extra allocation calls.

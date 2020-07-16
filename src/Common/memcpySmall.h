@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <sse2.h>
+#include <avx512f.h>
 
 
 /** memcpy function could work suboptimal if all the following conditions are met:
@@ -40,6 +41,19 @@ namespace detail
             n -= 16;
         }
     }
+
+    inline void memcpySmallAllowReadWriteOverflow63Impl(char * __restrict dst, const char * __restrict src, ssize_t n)
+    {
+        while (n > 0)
+        {
+            simde_mm512_storeu_si512(reinterpret_cast<simde__m512i *>(dst),
+                                     simde_mm512_loadu_si512(reinterpret_cast<const simde__m512i *>(src)));
+
+            dst += 64;
+            src += 64;
+            n -= 64;
+        }
+    }
 }
 
 /** Works under assumption, that it's possible to read up to 15 excessive bytes after end of 'src' region
@@ -54,3 +68,7 @@ inline void memcpySmallAllowReadWriteOverflow15(void * __restrict dst, const voi
   * This function was unused, and also it requires special handling for Valgrind and ASan.
   */
 
+inline void memcpySmallAllowReadWriteOverflow63(void * __restrict dst, const void * __restrict src, size_t n)
+{
+    detail::memcpySmallAllowReadWriteOverflow63Impl(reinterpret_cast<char *>(dst), reinterpret_cast<const char *>(src), n);
+}
