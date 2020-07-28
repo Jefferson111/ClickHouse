@@ -141,7 +141,7 @@ public:
             const size_t new_size = old_size + size_to_append;
 
             chars.resize(new_size);
-            memcpySmallAllowReadWriteOverflow63(chars.data() + old_size, &src.chars[offset], size_to_append);
+            memcpySmallAllowReadWriteOverflow15(chars.data() + old_size, &src.chars[offset], size_to_append);
             offsets.push_back(new_size);
         }
     }
